@@ -1,5 +1,5 @@
 --[[
-	Aurora UI Library  v2.0.0
+	Aurora UI Library  v2.1.0
 	Sidebar + header layout, card elements with descriptions, live theming.
 
 	Elements : Button (+ Primary), Toggle, Slider, Stepper, Progress, Input,
@@ -17,8 +17,21 @@ local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 
 local Aurora = {}
-Aurora.Version = "2.0.0"
+Aurora.Version = "2.1.0"
 Aurora._active = {}
+
+-- Built-in icons. Use the name anywhere an Icon is accepted: Icon = "auto"
+Aurora.Icons = {
+	auto = "rbxassetid://10709782230", -- bot
+	hub = "rbxassetid://10734975692", -- swords
+	level = "rbxassetid://10747363465", -- trending-up
+	potion = "rbxassetid://10734883986", -- flask-conical
+	sell = "rbxassetid://10709811110", -- coins
+	misc = "rbxassetid://10734950309", -- settings
+	search = "rbxassetid://10734943674", -- search
+	minus = "rbxassetid://10734896206", -- minus
+	close = "rbxassetid://10747384394", -- close
+}
 
 --// Themes ---------------------------------------------------------------------
 Aurora.Themes = {
@@ -205,28 +218,50 @@ local function snapper(min, max, inc)
 	end, dec
 end
 
--- Builds an icon from an asset id/url (image) or any text glyph. Returns instance, colorProperty.
+-- Builds an image icon. `ic` can be a name from Aurora.Icons ("hub"), an
+-- "rbxassetid://" string, or an asset id number. Anything else (text glyphs,
+-- emoji) is ignored on purpose, because those render as squares in Roblox fonts.
 local function makeIcon(ic, size, parent)
+	if type(ic) == "string" and Aurora.Icons[ic] then
+		ic = Aurora.Icons[ic]
+	end
 	if type(ic) == "number" then
 		ic = "rbxassetid://" .. ic
 	end
-	local isImage = type(ic) == "string" and (ic:find("^rbxasset") ~= nil or ic:find("^http") ~= nil)
-	if isImage then
-		return create("ImageLabel", {
-			BackgroundTransparency = 1,
-			Image = ic,
-			Size = UDim2.fromOffset(size, size),
-			Parent = parent,
-		}), "ImageColor3"
+	if type(ic) ~= "string" or not (ic:find("^rbxasset") or ic:find("^http")) then
+		return nil
 	end
-	return create("TextLabel", {
+	return create("ImageLabel", {
 		BackgroundTransparency = 1,
-		Text = tostring(ic),
-		TextSize = size,
-		Font = Enum.Font.GothamMedium,
-		Size = UDim2.fromOffset(size + 4, size + 4),
+		Image = ic,
+		Size = UDim2.fromOffset(size, size),
 		Parent = parent,
-	}), "TextColor3"
+	}), "ImageColor3"
+end
+
+-- Chevron drawn from two bars (no font glyph needed). rot: 0 = down, -90 = right.
+-- Position it by its center.
+local function chevron(w, parent, key, rot)
+	local c = create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Size = UDim2.fromOffset(12, 6),
+		BackgroundTransparency = 1,
+		Rotation = rot or 0,
+		Parent = parent,
+	})
+	for _, side in ipairs({ -1, 1 }) do
+		local bar = create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(side == -1 and 3 or 9, 3),
+			Size = UDim2.fromOffset(2, 8),
+			BorderSizePixel = 0,
+			Rotation = side == -1 and -45 or 45,
+			Parent = c,
+		})
+		corner(bar, 2)
+		w:_bind(bar, "BackgroundColor3", key)
+	end
+	return c
 end
 
 --// Window ---------------------------------------------------------------------
@@ -439,17 +474,17 @@ function Aurora:CreateWindow(opts)
 
 	--// Logo block
 	local logoX = 20
-	if opts.Icon then
-		local ic, prop = makeIcon(opts.Icon, 26, main)
-		ic.Position = UDim2.fromOffset(20, 18)
-		self:_bind(ic, prop, "Accent")
-		logoX = 56
-	else
-		local g = self:_text(main, "✦", 24, "Accent", Enum.Font.GothamBold)
-		g.Position = UDim2.fromOffset(20, 16)
-		g.Size = UDim2.fromOffset(28, 30)
-		g.TextXAlignment = Enum.TextXAlignment.Center
-		logoX = 56
+	local logoIcon = opts.Icon
+	if logoIcon == nil then
+		logoIcon = "hub"
+	end
+	if logoIcon then
+		local ic, prop = makeIcon(logoIcon, 26, main)
+		if ic then
+			ic.Position = UDim2.fromOffset(20, 18)
+			self:_bind(ic, prop, "Accent")
+			logoX = 56
+		end
 	end
 	local logoTitle = self:_text(main, self._name, 15, "Text", Enum.Font.GothamBold)
 	logoTitle.Position = UDim2.fromOffset(logoX, 16)
@@ -540,19 +575,26 @@ function Aurora:CreateWindow(opts)
 		Position = UDim2.new(1, -14, 0, 14),
 		Size = UDim2.fromOffset(30, 30),
 		BackgroundTransparency = 1,
-		Text = "×",
-		TextSize = 24,
-		Font = Enum.Font.GothamMedium,
+		Text = "",
 		AutoButtonColor = false,
 		ZIndex = 5,
 		Parent = main,
 	})
-	self:_bind(closeBtn, "TextColor3", "SubText")
+	local closeIcon = create("ImageLabel", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(18, 18),
+		BackgroundTransparency = 1,
+		Image = Aurora.Icons.close,
+		ZIndex = 6,
+		Parent = closeBtn,
+	})
+	self:_bind(closeIcon, "ImageColor3", "SubText")
 	closeBtn.MouseEnter:Connect(function()
-		tween(closeBtn, { TextColor3 = self.Theme.Text }, 0.15)
+		tween(closeIcon, { ImageColor3 = self.Theme.Text }, 0.15)
 	end)
 	closeBtn.MouseLeave:Connect(function()
-		tween(closeBtn, { TextColor3 = self.Theme.SubText }, 0.15)
+		tween(closeIcon, { ImageColor3 = self.Theme.SubText }, 0.15)
 	end)
 	closeBtn.MouseButton1Click:Connect(function()
 		self:SetVisible(false)
@@ -947,10 +989,12 @@ function Window:CreateTab(name, icon, description)
 	local labelX = 16
 	if icon then
 		iconObj, iconProp = makeIcon(icon, 18, btn)
-		iconObj.AnchorPoint = Vector2.new(0, 0.5)
-		iconObj.Position = UDim2.new(0, 14, 0.5, 0)
-		iconObj[iconProp] = w.Theme.SubText
-		labelX = 42
+		if iconObj then
+			iconObj.AnchorPoint = Vector2.new(0, 0.5)
+			iconObj.Position = UDim2.new(0, 14, 0.5, 0)
+			iconObj[iconProp] = w.Theme.SubText
+			labelX = 42
+		end
 	end
 
 	local label = create("TextLabel", {
@@ -1061,10 +1105,12 @@ function Tab:_head(el, o, reserve, nameKey, descKey)
 	local x = 16
 	if o.Icon then
 		local ic, prop = makeIcon(o.Icon, 18, el)
-		ic.AnchorPoint = Vector2.new(0, 0.5)
-		ic.Position = UDim2.new(0, 16, 0, hh / 2)
-		w:_bind(ic, prop, nameKey == "AccentText" and "AccentText" or "Accent")
-		x = 48
+		if ic then
+			ic.AnchorPoint = Vector2.new(0, 0.5)
+			ic.Position = UDim2.new(0, 16, 0, hh / 2)
+			w:_bind(ic, prop, nameKey == "AccentText" and "AccentText" or "Accent")
+			x = 48
+		end
 	end
 	local name = w:_text(el, o.Name or "", 14, nameKey or "Text")
 	name.Position = UDim2.fromOffset(x, hasDesc and 13 or 0)
@@ -1160,11 +1206,8 @@ function Tab:CreateButton(o)
 	local el = self:_element(hh, primary and "Accent" or "Element")
 	local name = self:_head(el, o, 44, primary and "AccentText" or "Text", primary and "AccentText" or "SubText")
 
-	local chev = w:_text(el, "›", 24, primary and "AccentText" or "SubText")
-	chev.AnchorPoint = Vector2.new(1, 0.5)
-	chev.Position = rightPos(hh, 16)
-	chev.Size = UDim2.fromOffset(16, 28)
-	chev.TextXAlignment = Enum.TextXAlignment.Center
+	local chev = chevron(w, el, primary and "AccentText" or "SubText", -90)
+	chev.Position = UDim2.new(1, -24, 0, hh / 2)
 
 	local hit = w:_hit(el)
 	if primary then
@@ -1377,7 +1420,7 @@ function Tab:CreateSlider(o)
 	return finish(obj, el)
 end
 
---// Stepper (− value +) --------------------------------------------------------
+--// Stepper (minus, value, plus) --------------------------------------------------------
 function Tab:CreateStepper(o)
 	local w = self.Window
 	o = o or {}
@@ -1400,28 +1443,47 @@ function Tab:CreateStepper(o)
 	corner(box, 8)
 	w:_stroke(box)
 
-	local function mkButton(txt, side)
+	local function mkButton(isPlus, side)
 		local b = create("TextButton", {
 			AnchorPoint = Vector2.new(side, 0),
 			Position = UDim2.new(side, 0, 0, 0),
 			Size = UDim2.new(0, 30, 1, 0),
 			BackgroundTransparency = 1,
-			Text = txt,
-			TextSize = 16,
-			Font = Enum.Font.GothamMedium,
+			Text = "",
 			AutoButtonColor = false,
 			Parent = box,
 		})
-		w:_bind(b, "TextColor3", "SubText")
+		local imgs = {}
+		local function addIcon(rot)
+			local i = create("ImageLabel", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromOffset(14, 14),
+				BackgroundTransparency = 1,
+				Image = Aurora.Icons.minus,
+				Rotation = rot,
+				Parent = b,
+			})
+			w:_bind(i, "ImageColor3", "SubText")
+			table.insert(imgs, i)
+		end
+		addIcon(0)
+		if isPlus then
+			addIcon(90)
+		end
 		b.MouseEnter:Connect(function()
-			tween(b, { TextColor3 = w.Theme.Text }, 0.15)
+			for _, i in ipairs(imgs) do
+				tween(i, { ImageColor3 = w.Theme.Text }, 0.15)
+			end
 		end)
 		b.MouseLeave:Connect(function()
-			tween(b, { TextColor3 = w.Theme.SubText }, 0.15)
+			for _, i in ipairs(imgs) do
+				tween(i, { ImageColor3 = w.Theme.SubText }, 0.15)
+			end
 		end)
 		return b
 	end
-	local minus, plus = mkButton("−", 0), mkButton("+", 1)
+	local minus, plus = mkButton(false, 0), mkButton(true, 1)
 	local label = w:_text(box, "", 13, "Text")
 	label.Position = UDim2.fromOffset(30, 0)
 	label.Size = UDim2.new(1, -60, 1, 0)
@@ -1577,6 +1639,14 @@ function Tab:CreateDropdown(o)
 	end
 	local options = normalize(o.Options)
 
+	-- search box: on by default when there are more than 7 options
+	local searchOn = o.Search
+	if searchOn == nil then
+		searchOn = #options > 7
+	end
+	local topPad = searchOn and 34 or 0
+	local query = ""
+
 	local hh = self:_height(o)
 	local el = self:_element(hh)
 	el.ClipsDescendants = true
@@ -1589,14 +1659,11 @@ function Tab:CreateDropdown(o)
 	value.TextXAlignment = Enum.TextXAlignment.Right
 	value.TextTruncate = Enum.TextTruncate.AtEnd
 
-	local arrow = w:_text(el, "▾", 14, "SubText")
-	arrow.AnchorPoint = Vector2.new(1, 0)
-	arrow.Position = UDim2.new(1, -14, 0, 0)
-	arrow.Size = UDim2.fromOffset(16, hh)
-	arrow.TextXAlignment = Enum.TextXAlignment.Center
+	local arrow = chevron(w, el, "SubText", 0)
+	arrow.Position = UDim2.new(1, -22, 0, hh / 2)
 
 	local list = create("ScrollingFrame", {
-		Position = UDim2.fromOffset(8, hh + 4),
+		Position = UDim2.fromOffset(8, hh + 4 + topPad),
 		Size = UDim2.new(1, -16, 0, 0),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -1608,6 +1675,48 @@ function Tab:CreateDropdown(o)
 	w:_bind(list, "ScrollBarImageColor3", "Accent")
 	create("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder, Parent = list })
 
+	local searchBox
+	if searchOn then
+		local sf = create("Frame", {
+			Position = UDim2.fromOffset(8, hh + 4),
+			Size = UDim2.new(1, -16, 0, 28),
+			BorderSizePixel = 0,
+			Parent = el,
+		})
+		w:_bind(sf, "BackgroundColor3", "Background")
+		corner(sf, 8)
+		local sstroke = w:_stroke(sf)
+		local si = create("ImageLabel", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 10, 0.5, 0),
+			Size = UDim2.fromOffset(14, 14),
+			BackgroundTransparency = 1,
+			Image = Aurora.Icons.search,
+			Parent = sf,
+		})
+		w:_bind(si, "ImageColor3", "SubText")
+		searchBox = create("TextBox", {
+			Position = UDim2.fromOffset(32, 0),
+			Size = UDim2.new(1, -40, 1, 0),
+			BackgroundTransparency = 1,
+			Text = "",
+			PlaceholderText = "Search...",
+			ClearTextOnFocus = false,
+			TextSize = 13,
+			Font = Enum.Font.GothamMedium,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Parent = sf,
+		})
+		w:_bind(searchBox, "TextColor3", "Text")
+		w:_bind(searchBox, "PlaceholderColor3", "SubText")
+		searchBox.Focused:Connect(function()
+			tween(sstroke, { Color = w.Theme.Accent }, 0.2)
+		end)
+		searchBox.FocusLost:Connect(function()
+			tween(sstroke, { Color = w.Theme.Stroke }, 0.2)
+		end)
+	end
+
 	local hit = w:_hit(el)
 	hit.Size = UDim2.new(1, 0, 0, hh)
 	w:_hover(el, hit)
@@ -1616,8 +1725,18 @@ function Tab:CreateDropdown(o)
 	local buttons = {}
 	local open = false
 
+	local function matches(opt)
+		return query == "" or string.find(string.lower(opt), query, 1, true) ~= nil
+	end
+
 	local function listH()
-		return math.min(#options * 31, 150)
+		local n = 0
+		for _, opt in ipairs(options) do
+			if matches(opt) then
+				n = n + 1
+			end
+		end
+		return math.min(n * 31, 150)
 	end
 
 	local function renderValue()
@@ -1648,10 +1767,17 @@ function Tab:CreateDropdown(o)
 		renderButtons(0.3)
 	end)
 
+	local function applyFilter()
+		for opt, b in pairs(buttons) do
+			b.Visible = matches(opt)
+		end
+		list.Size = UDim2.new(1, -16, 0, listH())
+	end
+
 	local function setOpen(v)
 		open = v
 		list.Size = UDim2.new(1, -16, 0, listH())
-		tween(el, { Size = UDim2.new(1, 0, 0, v and (hh + 4 + listH() + 8) or hh) }, 0.25)
+		tween(el, { Size = UDim2.new(1, 0, 0, v and (hh + 4 + topPad + listH() + 8) or hh) }, 0.25)
 		tween(arrow, { Rotation = v and 180 or 0 }, 0.25)
 	end
 
@@ -1698,8 +1824,18 @@ function Tab:CreateDropdown(o)
 				toggleOption(opt)
 			end)
 		end
-		list.Size = UDim2.new(1, -16, 0, listH())
+		applyFilter()
 		renderButtons(0)
+	end
+
+	if searchBox then
+		searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+			query = string.lower(searchBox.Text)
+			applyFilter()
+			if open then
+				setOpen(true)
+			end
+		end)
 	end
 
 	if multi then
@@ -2033,7 +2169,7 @@ function Tab:CreatePlayerCard(o)
 		end
 		nameL.Text = plr.DisplayName
 		userL.Text = "@" .. plr.Name
-		infoL.Text = string.format("ID: %d  •  Account age: %d days", plr.UserId, plr.AccountAge)
+		infoL.Text = string.format("ID: %d  |  Account age: %d days", plr.UserId, plr.AccountAge)
 		task.spawn(function()
 			local ok, img = pcall(
 				Players.GetUserThumbnailAsync,
@@ -2099,6 +2235,9 @@ end
 
 --// Ready-made settings tab ------------------------------------------------------
 function Window:CreateSettingsTab(name, icon)
+	if icon == nil then
+		icon = "misc"
+	end
 	local tab = self:CreateTab(name or "Settings", icon, "Theme, colors and interface")
 
 	tab:CreateSection("Appearance")
